@@ -22,7 +22,7 @@ const alloc = std.heap.wasm_allocator;
 
 const NODE_CAP: u32 = 100_000;
 const EDGE_CAP: u32 = 200_000;
-const UNDO_CAP: u32 = 8;       // smaller undo history so snapshot RAM stays sane at 100k nodes
+const UNDO_CAP: u32 = 8; // smaller undo history so snapshot RAM stays sane at 100k nodes
 
 // ── Node SoA ────────────────────────────────────────────────────────────────
 var pos_x: []f32 = &.{};
@@ -50,24 +50,24 @@ var edge_count: u32 = 0;
 const Snapshot = struct {
     node_count: u32 = 0,
     edge_count: u32 = 0,
-    pos_x: [NODE_CAP]f32 = [_]f32{0} ** NODE_CAP,
-    pos_y: [NODE_CAP]f32 = [_]f32{0} ** NODE_CAP,
-    size_w: [NODE_CAP]f32 = [_]f32{0} ** NODE_CAP,
-    size_h: [NODE_CAP]f32 = [_]f32{0} ** NODE_CAP,
-    kind: [NODE_CAP]u8 = [_]u8{0} ** NODE_CAP,
-    n_in: [NODE_CAP]u8 = [_]u8{0} ** NODE_CAP,
-    n_out: [NODE_CAP]u8 = [_]u8{0} ** NODE_CAP,
-    selected: [NODE_CAP]u8 = [_]u8{0} ** NODE_CAP,
-    edge_from_node: [EDGE_CAP]u32 = [_]u32{0} ** EDGE_CAP,
-    edge_to_node: [EDGE_CAP]u32 = [_]u32{0} ** EDGE_CAP,
-    edge_from_port: [EDGE_CAP]u8 = [_]u8{0} ** EDGE_CAP,
-    edge_to_port: [EDGE_CAP]u8 = [_]u8{0} ** EDGE_CAP,
-    edge_selected: [EDGE_CAP]u8 = [_]u8{0} ** EDGE_CAP,
+    pos_x: [NODE_CAP]f32 = @splat(0),
+    pos_y: [NODE_CAP]f32 = @splat(0),
+    size_w: [NODE_CAP]f32 = @splat(0),
+    size_h: [NODE_CAP]f32 = @splat(0),
+    kind: [NODE_CAP]u8 = @splat(0),
+    n_in: [NODE_CAP]u8 = @splat(0),
+    n_out: [NODE_CAP]u8 = @splat(0),
+    selected: [NODE_CAP]u8 = @splat(0),
+    edge_from_node: [EDGE_CAP]u32 = @splat(0),
+    edge_to_node: [EDGE_CAP]u32 = @splat(0),
+    edge_from_port: [EDGE_CAP]u8 = @splat(0),
+    edge_to_port: [EDGE_CAP]u8 = @splat(0),
+    edge_selected: [EDGE_CAP]u8 = @splat(0),
 };
 
 var undo_stack: []Snapshot = &.{};
-var undo_top: u32 = 0;     // exclusive end
-var undo_cursor: u32 = 0;  // index of the latest committed state (current)
+var undo_top: u32 = 0; // exclusive end
+var undo_cursor: u32 = 0; // index of the latest committed state (current)
 
 // Scratch buffers for deletion-compaction, allocated once to avoid blowing
 // the wasm shadow stack on big delete calls.
@@ -83,14 +83,16 @@ const GRID_BUCKET: u32 = 64;
 const GRID_HALF: f32 = (@as(f32, @floatFromInt(GRID_DIM)) * GRID_CELL) * 0.5;
 const GRID_TOTAL_CELLS: u32 = GRID_DIM * GRID_DIM;
 
-var grid_cells: []u32 = &.{};   // GRID_TOTAL_CELLS * GRID_BUCKET = 64K u32 = 256KB
-var grid_count: []u32 = &.{};   // count per cell
+var grid_cells: []u32 = &.{}; // GRID_TOTAL_CELLS * GRID_BUCKET = 64K u32 = 256KB
+var grid_count: []u32 = &.{}; // count per cell
 var grid_dirty: bool = true;
 var query_results: []u32 = &.{};
 var query_seen: []u8 = &.{};
 var query_count: u32 = 0;
 
-fn invalidateGrid() void { grid_dirty = true; }
+fn invalidateGrid() void {
+    grid_dirty = true;
+}
 
 fn worldToGrid(wx: f32, wy: f32, cx: *u32, cy: *u32) void {
     const gx_f = @floor((wx + GRID_HALF) / GRID_CELL);
@@ -134,9 +136,9 @@ fn rebuildGrid() void {
 
 // Scratch buffers for auto-layout (Sugiyama). Sized at NODE_CAP so the
 // algorithm never allocates on the hot path. ~24 KB total.
-var layout_layer: []u32 = &.{};       // node id → layer index
-var layout_indeg: []u32 = &.{};       // in-degree counter during topo sort
-var layout_queue: []u32 = &.{};       // BFS frontier
+var layout_layer: []u32 = &.{}; // node id → layer index
+var layout_indeg: []u32 = &.{}; // in-degree counter during topo sort
+var layout_queue: []u32 = &.{}; // BFS frontier
 var layout_layer_count: []u32 = &.{}; // # nodes per layer
 var layout_layer_offset: []u32 = &.{};
 var layout_layer_nodes: []u32 = &.{}; // flattened: nodes for layer L start at offset[L]
@@ -165,35 +167,35 @@ pub export fn init() u32 {
     tmp_removed = alloc.alloc(u8, NODE_CAP) catch return 0;
     tmp_remap = alloc.alloc(i32, NODE_CAP) catch return 0;
 
-    grid_cells  = alloc.alloc(u32, GRID_TOTAL_CELLS * GRID_BUCKET) catch return 0;
-    grid_count  = alloc.alloc(u32, GRID_TOTAL_CELLS) catch return 0;
+    grid_cells = alloc.alloc(u32, GRID_TOTAL_CELLS * GRID_BUCKET) catch return 0;
+    grid_count = alloc.alloc(u32, GRID_TOTAL_CELLS) catch return 0;
     query_results = alloc.alloc(u32, NODE_CAP) catch return 0;
-    query_seen    = alloc.alloc(u8, NODE_CAP) catch return 0;
+    query_seen = alloc.alloc(u8, NODE_CAP) catch return 0;
     @memset(grid_count, 0);
 
-    layout_layer        = alloc.alloc(u32, NODE_CAP) catch return 0;
-    layout_indeg        = alloc.alloc(u32, NODE_CAP) catch return 0;
-    layout_queue        = alloc.alloc(u32, NODE_CAP) catch return 0;
-    layout_layer_count  = alloc.alloc(u32, NODE_CAP) catch return 0;
+    layout_layer = alloc.alloc(u32, NODE_CAP) catch return 0;
+    layout_indeg = alloc.alloc(u32, NODE_CAP) catch return 0;
+    layout_queue = alloc.alloc(u32, NODE_CAP) catch return 0;
+    layout_layer_count = alloc.alloc(u32, NODE_CAP) catch return 0;
     layout_layer_offset = alloc.alloc(u32, NODE_CAP) catch return 0;
-    layout_layer_nodes  = alloc.alloc(u32, NODE_CAP) catch return 0;
-    layout_bary         = alloc.alloc(f32, NODE_CAP) catch return 0;
+    layout_layer_nodes = alloc.alloc(u32, NODE_CAP) catch return 0;
+    layout_bary = alloc.alloc(f32, NODE_CAP) catch return 0;
 
     // Pre-allocate force-directed + live-compute buffers RIGHT NOW so the
     // wasm_allocator never has to grow memory after init returns. If we
     // allocated these lazily, the first call to force-layout or live-tick
     // would detach every Float32Array view JS holds on memory.buffer —
     // exactly the silent-data-corruption bug v3's docs warned about.
-    force_vx    = alloc.alloc(f32, NODE_CAP) catch return 0;
-    force_vy    = alloc.alloc(f32, NODE_CAP) catch return 0;
-    force_fx    = alloc.alloc(f32, NODE_CAP) catch return 0;
-    force_fy    = alloc.alloc(f32, NODE_CAP) catch return 0;
+    force_vx = alloc.alloc(f32, NODE_CAP) catch return 0;
+    force_vy = alloc.alloc(f32, NODE_CAP) catch return 0;
+    force_fx = alloc.alloc(f32, NODE_CAP) catch return 0;
+    force_fy = alloc.alloc(f32, NODE_CAP) catch return 0;
     @memset(force_vx, 0);
     @memset(force_vy, 0);
     force_initialized = true;
 
-    node_value  = alloc.alloc(f32, NODE_CAP) catch return 0;
-    edge_value  = alloc.alloc(f32, EDGE_CAP) catch return 0;
+    node_value = alloc.alloc(f32, NODE_CAP) catch return 0;
+    edge_value = alloc.alloc(f32, EDGE_CAP) catch return 0;
     @memset(node_value, 0);
     @memset(edge_value, 0);
     compute_initialized = true;
@@ -258,7 +260,9 @@ pub export fn clearEdgeSelection() void {
 pub export fn countSelectedEdges() u32 {
     var c: u32 = 0;
     var i: u32 = 0;
-    while (i < edge_count) : (i += 1) { if (edge_selected[i] != 0) c += 1; }
+    while (i < edge_count) : (i += 1) {
+        if (edge_selected[i] != 0) c += 1;
+    }
     return c;
 }
 
@@ -325,7 +329,9 @@ pub export fn selectInRect(x0: f32, y0: f32, x1: f32, y1: f32, replace: u32) u32
 pub export fn countSelected() u32 {
     var c: u32 = 0;
     var i: u32 = 0;
-    while (i < node_count) : (i += 1) { if (selected[i] != 0) c += 1; }
+    while (i < node_count) : (i += 1) {
+        if (selected[i] != 0) c += 1;
+    }
     return c;
 }
 
@@ -402,7 +408,10 @@ pub export fn deleteSelectedEdgesOnly() u32 {
     var new_ec: u32 = 0;
     var e: u32 = 0;
     while (e < edge_count) : (e += 1) {
-        if (edge_selected[e] != 0) { dropped += 1; continue; }
+        if (edge_selected[e] != 0) {
+            dropped += 1;
+            continue;
+        }
         if (new_ec != e) {
             edge_from_node[new_ec] = edge_from_node[e];
             edge_to_node[new_ec] = edge_to_node[e];
@@ -425,7 +434,10 @@ pub export fn alignSelected(axis: u32, mode: u32) u32 {
     var k: u32 = 0;
     var i: u32 = 0;
     while (i < node_count) : (i += 1) {
-        if (selected[i] != 0) { ids[k] = i; k += 1; }
+        if (selected[i] != 0) {
+            ids[k] = i;
+            k += 1;
+        }
     }
     if (k < 2) return 0;
     // For distribute, sort selected by their current axis value.
@@ -438,7 +450,9 @@ pub export fn alignSelected(axis: u32, mode: u32) u32 {
                 const va = if (axis == 0) pos_x[ids[b]] else pos_y[ids[b]];
                 const vb = if (axis == 0) pos_x[ids[b + 1]] else pos_y[ids[b + 1]];
                 if (va > vb) {
-                    const tmp = ids[b]; ids[b] = ids[b + 1]; ids[b + 1] = tmp;
+                    const tmp = ids[b];
+                    ids[b] = ids[b + 1];
+                    ids[b + 1] = tmp;
                 }
             }
         }
@@ -464,9 +478,9 @@ pub export fn alignSelected(axis: u32, mode: u32) u32 {
         if (center + half > hi) hi = center + half;
     }
     const target = switch (mode) {
-        0 => lo,            // min: align to left/top of bbox
+        0 => lo, // min: align to left/top of bbox
         1 => (lo + hi) * 0.5, // center
-        2 => hi,            // max: align to right/bottom
+        2 => hi, // max: align to right/bottom
         else => lo,
     };
     c = 0;
@@ -770,7 +784,7 @@ pub export fn generateStress(count: u32) u32 {
     // Per-kind size/port tables (flow primitives only).
     const sizes_w = [_]f32{ 140, 160, 160, 130, 140, 160, 130 };
     const sizes_h = [_]f32{ 60, 80, 80, 130, 60, 120, 130 };
-    const nins  = [_]u32{ 0, 1, 1, 1, 1, 3, 1 };
+    const nins = [_]u32{ 0, 1, 1, 1, 1, 3, 1 };
     const nouts = [_]u32{ 1, 1, 1, 2, 0, 1, 3 };
 
     var i: u32 = 0;
@@ -933,7 +947,9 @@ pub export fn queryRect(min_x: f32, min_y: f32, max_x: f32, max_y: f32) u32 {
     return query_count;
 }
 
-pub export fn queryResultsPtr() u32 { return @intCast(@intFromPtr(query_results.ptr)); }
+pub export fn queryResultsPtr() u32 {
+    return @intCast(@intFromPtr(query_results.ptr));
+}
 
 inline fn pack(side: u32, port_idx: u32, node_id: u32) i32 {
     return @intCast((side << 24) | ((port_idx & 0xFF) << 16) | (node_id & 0xFFFF));
@@ -1016,8 +1032,12 @@ pub export fn redo() u32 {
     return 1;
 }
 
-pub export fn canUndo() u32 { return if (undo_cursor > 0) 1 else 0; }
-pub export fn canRedo() u32 { return if (undo_cursor + 1 < undo_top) 1 else 0; }
+pub export fn canUndo() u32 {
+    return if (undo_cursor > 0) 1 else 0;
+}
+pub export fn canRedo() u32 {
+    return if (undo_cursor + 1 < undo_top) 1 else 0;
+}
 
 /// Wipe the graph state back to "empty document" so the JS host can stream a
 /// fresh graph in (Load-from-file, template, etc.). Buffers stay allocated.
@@ -1034,8 +1054,12 @@ pub export fn reset() void {
 
 // History scrubber API — JS reads cursor + top to render a slider, and writes
 // a cursor to time-travel to a specific snapshot.
-pub export fn historyCursor() u32 { return undo_cursor; }
-pub export fn historyTop()    u32 { return undo_top; }
+pub export fn historyCursor() u32 {
+    return undo_cursor;
+}
+pub export fn historyTop() u32 {
+    return undo_top;
+}
 pub export fn historyJump(idx: u32) u32 {
     if (idx >= undo_top) return 0;
     undo_cursor = idx;
@@ -1108,7 +1132,10 @@ pub export fn computeTick(time_seconds: f32) void {
             if (edge_to_node[e] != u) continue;
             const ev = edge_value[e];
             sum += ev;
-            if (!got_any) { first = ev; got_any = true; }
+            if (!got_any) {
+                first = ev;
+                got_any = true;
+            }
         }
 
         // Compute by kind.
@@ -1149,28 +1176,66 @@ pub export fn computeTick(time_seconds: f32) void {
     }
 }
 
-pub export fn nodeValuePtr() u32 { return @intCast(@intFromPtr(node_value.ptr)); }
-pub export fn edgeValuePtr() u32 { return @intCast(@intFromPtr(edge_value.ptr)); }
+pub export fn nodeValuePtr() u32 {
+    return @intCast(@intFromPtr(node_value.ptr));
+}
+pub export fn edgeValuePtr() u32 {
+    return @intCast(@intFromPtr(edge_value.ptr));
+}
 
 // ── Zero-copy pointer exports ───────────────────────────────────────────────
 
-pub export fn posXPtr() u32 { return @intCast(@intFromPtr(pos_x.ptr)); }
-pub export fn posYPtr() u32 { return @intCast(@intFromPtr(pos_y.ptr)); }
-pub export fn sizeWPtr() u32 { return @intCast(@intFromPtr(size_w.ptr)); }
-pub export fn sizeHPtr() u32 { return @intCast(@intFromPtr(size_h.ptr)); }
-pub export fn kindPtr() u32 { return @intCast(@intFromPtr(kind.ptr)); }
-pub export fn nInPtr() u32 { return @intCast(@intFromPtr(n_in.ptr)); }
-pub export fn nOutPtr() u32 { return @intCast(@intFromPtr(n_out.ptr)); }
-pub export fn selectedPtr() u32 { return @intCast(@intFromPtr(selected.ptr)); }
-pub export fn edgeFromNodePtr() u32 { return @intCast(@intFromPtr(edge_from_node.ptr)); }
-pub export fn edgeToNodePtr() u32 { return @intCast(@intFromPtr(edge_to_node.ptr)); }
-pub export fn edgeFromPortPtr() u32 { return @intCast(@intFromPtr(edge_from_port.ptr)); }
-pub export fn edgeToPortPtr() u32 { return @intCast(@intFromPtr(edge_to_port.ptr)); }
-pub export fn edgeSelectedPtr() u32 { return @intCast(@intFromPtr(edge_selected.ptr)); }
-pub export fn nodeCount_() u32 { return node_count; }
-pub export fn edgeCount_() u32 { return edge_count; }
-pub export fn nodeCap() u32 { return NODE_CAP; }
-pub export fn edgeCap() u32 { return EDGE_CAP; }
+pub export fn posXPtr() u32 {
+    return @intCast(@intFromPtr(pos_x.ptr));
+}
+pub export fn posYPtr() u32 {
+    return @intCast(@intFromPtr(pos_y.ptr));
+}
+pub export fn sizeWPtr() u32 {
+    return @intCast(@intFromPtr(size_w.ptr));
+}
+pub export fn sizeHPtr() u32 {
+    return @intCast(@intFromPtr(size_h.ptr));
+}
+pub export fn kindPtr() u32 {
+    return @intCast(@intFromPtr(kind.ptr));
+}
+pub export fn nInPtr() u32 {
+    return @intCast(@intFromPtr(n_in.ptr));
+}
+pub export fn nOutPtr() u32 {
+    return @intCast(@intFromPtr(n_out.ptr));
+}
+pub export fn selectedPtr() u32 {
+    return @intCast(@intFromPtr(selected.ptr));
+}
+pub export fn edgeFromNodePtr() u32 {
+    return @intCast(@intFromPtr(edge_from_node.ptr));
+}
+pub export fn edgeToNodePtr() u32 {
+    return @intCast(@intFromPtr(edge_to_node.ptr));
+}
+pub export fn edgeFromPortPtr() u32 {
+    return @intCast(@intFromPtr(edge_from_port.ptr));
+}
+pub export fn edgeToPortPtr() u32 {
+    return @intCast(@intFromPtr(edge_to_port.ptr));
+}
+pub export fn edgeSelectedPtr() u32 {
+    return @intCast(@intFromPtr(edge_selected.ptr));
+}
+pub export fn nodeCount_() u32 {
+    return node_count;
+}
+pub export fn edgeCount_() u32 {
+    return edge_count;
+}
+pub export fn nodeCap() u32 {
+    return NODE_CAP;
+}
+pub export fn edgeCap() u32 {
+    return EDGE_CAP;
+}
 
 // ── Freestanding plumbing ───────────────────────────────────────────────────
 
